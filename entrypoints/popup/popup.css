@@ -1,0 +1,15 @@
+body { width: 320px; }
+main { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; align-items: center; gap: 8px; }
+header h1 { font-size: 15px; margin: 0; flex: 1; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .text { flex: 1; }
+.row .text strong { display: block; font-weight: 600; }
+.row .text small { color: var(--muted); }
+.card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.fill { width: 100%; padding: 10px; }
+.summary { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 13px; }
+.summary span { display: flex; align-items: center; gap: 6px; }
+.notice { background: var(--surface); border-radius: var(--radius); padding: 10px 12px; }
+footer { display: flex; justify-content: space-between; font-size: 12px; }
+kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }

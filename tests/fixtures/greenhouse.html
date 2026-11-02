@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Job Application for Software Engineer at Acme</title></head>
+<body>
+<main>
+  <h1>Software Engineer</h1>
+  <div class="description"><p>Acme builds rockets. You will write TypeScript and Go for our launch systems.</p></div>
+  <form id="application_form" action="/applications" method="post">
+    <div class="field"><label for="first_name">First Name <span class="asterisk">*</span></label>
+      <input id="first_name" name="job_application[first_name]" type="text" aria-required="true"></div>
+    <div class="field"><label for="last_name">Last Name <span class="asterisk">*</span></label>
+      <input id="last_name" name="job_application[last_name]" type="text" aria-required="true"></div>
+    <div class="field"><label for="email">Email <span class="asterisk">*</span></label>
+      <input id="email" name="job_application[email]" type="text" aria-required="true"></div>
+    <div class="field"><label for="phone">Phone</label>
+      <input id="phone" name="job_application[phone]" type="text"></div>
+    <div class="field"><label for="resume">Resume/CV <span class="asterisk">*</span></label>
+      <input id="resume" name="job_application[resume]" type="file" style="display:none"><button type="button">Attach</button></div>
+    <div class="field"><label for="q_linkedin">LinkedIn Profile</label><input id="q_linkedin" name="question_1" type="text"></div>
+    <div class="field"><label for="q_web">Website</label><input id="q_web" name="question_2" type="text"></div>
+    <div class="field"><label for="q_auth">Are you legally authorized to work in the United States? *</label>
+      <select id="q_auth" name="question_3"><option value="">--</option><option value="1">Yes</option><option value="0">No</option></select></div>
+    <div class="field"><label for="q_spon">Will you now or in the future require sponsorship for employment visa status (e.g. H-1B)? *</label>
+      <select id="q_spon" name="question_4"><option value="">--</option><option value="1">Yes</option><option value="0">No</option></select></div>
+    <div class="field"><label for="q_why">Why do you want to work at Acme? *</label><textarea id="q_why" name="question_5"></textarea></div>
+    <div class="field"><label for="q_hear">How did you hear about this job?</label><input id="q_hear" name="question_6" type="text"></div>
+    <div class="field"><label for="q_salary">Desired salary *</label><input id="q_salary" name="question_7" type="text"></div>
+    <div class="field"><label for="q_favcolor">What is your favorite color? *</label><input id="q_favcolor" name="question_8" type="text"></div>
+    <div id="education_section">
+      <h3>Education</h3>
+      <div class="field"><label for="school0">School</label><input id="school0" name="education_school_name_0"></div>
+      <div class="field"><label for="degree0">Degree</label>
+        <select id="degree0" name="education_degree_0"><option value="">Select a Degree</option><option>High School</option><option>Bachelor's Degree</option><option>Master's Degree</option></select></div>
+      <div class="field"><label for="discipline0">Discipline</label><input id="discipline0" name="education_discipline_0"></div>
+      <div class="field"><label for="edu_end_month">End date month</label>
+        <select id="edu_end_month"><option value="">Month</option><option value="1">January</option><option value="5">May</option><option value="12">December</option></select></div>
+      <div class="field"><label for="edu_end_year">End date year</label><input id="edu_end_year" placeholder="YYYY"></div>
+    </div>
+    <div class="eeo">
+      <div class="field"><label for="gender">Gender</label>
+        <select id="gender" name="job_application[gender]"><option value="">Please select</option><option>Male</option><option>Female</option><option>Decline To Self Identify</option></select></div>
+    </div>
+    <div class="field"><label><input type="checkbox" id="consent" required> I agree to the privacy policy *</label></div>
+    <input type="submit" value="Submit Application">
+  </form>
+</main>
+</body>
+</html>

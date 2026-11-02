@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Apply - Acme Careers</title></head>
+<body>
+<div data-automation-id="applyFlowPage" id="flow">
+  <h2>My Information</h2>
+  <div data-automation-id="legalNameSection">
+    <label for="fn">First Name*</label><input id="fn" data-automation-id="legalNameSection_firstName" aria-required="true">
+    <label for="ln">Last Name*</label><input id="ln" data-automation-id="legalNameSection_lastName" aria-required="true">
+  </div>
+  <div data-automation-id="addressSection">
+    <label for="city">City</label><input id="city" data-automation-id="addressSection_city">
+    <label for="zip">Postal Code</label><input id="zip" data-automation-id="addressSection_postalCode">
+  </div>
+  <label for="em">Email*</label><input id="em" data-automation-id="email" aria-required="true">
+  <label for="howheard">How Did You Hear About Us?*</label>
+  <button id="howheard" type="button" aria-haspopup="listbox" aria-required="true">Select One</button>
+  <ul role="listbox" id="howheard-list" hidden>
+    <li role="option">Job Board</li><li role="option">LinkedIn</li><li role="option">Referral</li>
+  </ul>
+  <button id="next" type="button" data-automation-id="bottom-navigation-next-button">Save and Continue</button>
+</div>
+<script>
+  const btn = document.getElementById('howheard');
+  const list = document.getElementById('howheard-list');
+  btn.addEventListener('click', () => { list.hidden = false; });
+  list.addEventListener('click', (e) => {
+    const opt = e.target.closest('[role=option]');
+    if (!opt) return;
+    btn.textContent = opt.textContent; list.hidden = true;
+  });
+  document.getElementById('next').addEventListener('click', () => {
+    document.getElementById('flow').innerHTML = `
+      <h2>My Experience</h2>
+      <div data-automation-id="workExperienceSection">
+        <h3>Work Experience 1</h3>
+        <label for="jt1">Job Title*</label><input id="jt1" data-automation-id="jobTitle" aria-required="true">
+        <label for="co1">Company*</label><input id="co1" data-automation-id="company" aria-required="true">
+        <label><input type="checkbox" id="cw1" data-automation-id="currentlyWorkHere"> I currently work here</label>
+        <label for="desc1">Role Description</label><textarea id="desc1" data-automation-id="description"></textarea>
+      </div>
+      <div data-automation-id="educationSection">
+        <h3>Education 1</h3>
+        <label for="sc1">School or University*</label><input id="sc1" data-automation-id="school" aria-required="true">
+      </div>`;
+  });
+</script>
+</body>
+</html>

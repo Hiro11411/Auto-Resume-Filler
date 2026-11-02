@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Research Lab - Robotics Intern</title>
+<style>.dropdown-container { display: none; } .dropdown-location { padding: 4px 8px; }</style>
+</head>
+<body>
+<!-- Structure mirrors a Lever application (jobs.lever.co/<company>/<id>/apply). Content is made up. -->
+<form id="application-form" class="application-form" action="/lab/123/apply" method="post">
+<ul>
+  <li class="application-question resume"><label><div class="application-label">Resume/CV<span class="required">✱</span></div>
+    <div class="application-field"><input class="application-file-input" type="file" name="resume" id="resume-upload-input"></div></label></li>
+  <li class="application-question"><label><div class="application-label">Full name<span class="required">✱</span></div>
+    <div class="application-field"><input type="text" name="name" required></div></label></li>
+  <li class="application-question"><label><div class="application-label">Email<span class="required">✱</span></div>
+    <div class="application-field"><input type="email" name="email" required></div></label></li>
+  <li class="application-question"><label><div class="application-label">Phone</div>
+    <div class="application-field"><input type="text" name="phone" id="phone"></div></label></li>
+  <li class="application-question" data-qa="structured-contact-location-question"><label><div class="application-label">Current location</div>
+    <div class="application-field"><input class="location-input" id="location-input" type="text" maxlength="100" name="location">
+      <input id="selected-location" type="hidden" name="selectedLocation">
+      <div class="dropdown-container"><div class="dropdown-results"></div><div class="dropdown-no-results">No location found.</div></div></div></label></li>
+</ul>
+<ul>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">How did you hear about this internship?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[a][field0]" value="Conference, Workshop, or Seminar" required="required"><span class="application-answer-alternative">Conference, Workshop, or Seminar</span></label></li>
+      <li><label><input type="radio" name="cards[a][field0]" value="LinkedIn" required="required"><span class="application-answer-alternative">LinkedIn</span></label></li>
+      <li><label><input type="radio" name="cards[a][field0]" value="Referral" required="required"><span class="application-answer-alternative">Referral</span></label></li>
+      <li><label><input type="radio" name="cards[a][field0]" value="Other" required="required"><span class="application-answer-alternative">Other</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width textarea"><div class="text">In 1-3 sentences, tell us about one thing we're working on that you find exciting?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><textarea class="card-field-input" name="cards[b][field0]" required="required"></textarea></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">What degree are you currently enrolled in?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[c][field0]" value="PhD" required="required"><span class="application-answer-alternative">PhD</span></label></li>
+      <li><label><input type="radio" name="cards[c][field0]" value="Master's" required="required"><span class="application-answer-alternative">Master's</span></label></li>
+      <li><label><input type="radio" name="cards[c][field0]" value="Bachelor's" required="required"><span class="application-answer-alternative">Bachelor's</span></label></li>
+      <li><label><input type="radio" name="cards[c][field0]" value="Other" required="required"><span class="application-answer-alternative">Other</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Are you eligible to work in the United States?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[d][field0]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+      <li><label><input type="radio" name="cards[d][field0]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Are you a U.S. citizen, a lawful permanent resident of the United States (“green card holder”), an asylee, a refugee, or temporary resident under the 1986 legalization program?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[d][field1]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+      <li><label><input type="radio" name="cards[d][field1]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Are you a national, citizen, or permanent resident of Cuba, Iran, North Korea, Sudan, Syria, or Crimea (region of Ukraine)?<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[d][field2]" value="Yes" required="required"><span class="application-answer-alternative">Yes</span></label></li>
+      <li><label><input type="radio" name="cards[d][field2]" value="No" required="required"><span class="application-answer-alternative">No</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question custom-question"><div><div class="application-label full-width multiple-choice"><div class="text">Selection criteria should be provided in writing to all candidates. We comply with U.S. export control laws. The "deemed export" rule does not apply to transfers between U.S. citizens and persons lawfully admitted for permanent residence. Your answers will be used by the company solely to ensure compliance.<span class="required">✱</span></div></div>
+    <div class="application-field full-width required-field"><ul data-qa="multiple-choice">
+      <li><label><input type="radio" name="cards[d][field3]" value="I have read and understand the selection criteria." required="required"><span class="application-answer-alternative">I have read and understand the selection criteria.</span></label></li>
+    </ul></div></div></li>
+  <li class="application-question" id="second-location"><label><div class="application-label">Current location</div>
+    <div class="application-field"><input class="location-input" id="location-input-2" type="text" maxlength="100" name="cards[e][field0]">
+      <input id="selected-location-2" type="hidden" name="cards[e][selected]">
+      <div class="dropdown-container"><div class="dropdown-results"></div><div class="dropdown-no-results">No location found.</div></div></div></label></li>
+</ul>
+<button type="submit">Submit application</button>
+</form>
+<script>
+  // Behaviour modelled on Lever's location typeahead (written for this fixture):
+  // search runs on keydown after a 500 ms debounce; blur while the list is open
+  // clears the box; a suggestion is chosen on mousedown.
+  const RESULTS = ['Boston, Lincolnshire, United Kingdom', 'Boston, Massachusetts, United States', 'Bostonia, California, United States'];
+  document.querySelectorAll('input.location-input').forEach((input) => {
+    const field = input.closest('.application-field');
+    const box = field.querySelector('.dropdown-container');
+    const results = field.querySelector('.dropdown-results');
+    const hidden = field.querySelector('input[type=hidden]');
+    let timer;
+    input.addEventListener('input', () => { box.style.display = 'block'; });
+    input.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        results.innerHTML = '';
+        const q = input.value.split(',')[0].trim().toLowerCase();
+        RESULTS.filter((r) => q && r.toLowerCase().startsWith(q)).forEach((r, i) => {
+          const div = document.createElement('div');
+          div.className = 'dropdown-location'; div.id = 'location-' + i; div.textContent = r;
+          results.appendChild(div);
+        });
+      }, 500);
+    });
+    input.addEventListener('blur', () => {
+      if (box.style.display !== 'none') { box.style.display = 'none'; results.innerHTML = ''; input.value = ''; hidden.value = ''; }
+    });
+    results.addEventListener('mousedown', (e) => {
+      const row = e.target.closest('.dropdown-location');
+      if (!row) return;
+      box.style.display = 'none';
+      input.value = row.textContent;
+      hidden.value = JSON.stringify({ name: row.textContent });
+      results.innerHTML = '';
+    });
+  });
+  // A page-side validator, to prove the post-fill check catches what the page rejects.
+  document.getElementById('phone').addEventListener('change', (e) => {
+    e.target.setAttribute('aria-invalid', /[()]/.test(e.target.value) ? 'true' : 'false');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# dependencies and build output
+node_modules
+.output
+.wxt
+*.zip
+
+# test artifacts
+test-results
+playwright-report
+
+# secrets: never commit API keys or certificates
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
