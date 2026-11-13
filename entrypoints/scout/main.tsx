@@ -5,8 +5,8 @@ import { emptyProfile, type Profile, type Settings } from '../../src/profile/sch
 import { loadProfile, loadSettings, saveSettings } from '../../src/profile/storage';
 import { hidesNoSponsorship, matches } from '../../src/scout/filter';
 import { SCOUT_PERMISSION } from '../../src/scout/run';
-import { SOURCES } from '../../src/scout/sources';
-import { loadScout, markSeen, setApplied, type ScoutData } from '../../src/scout/store';
+import { LIST_IDS, LISTS, listById, type ListId, type ScoutList } from '../../src/scout/lists';
+import { loadScout, markSeen, scoutKeys, setApplied, type ScoutData } from '../../src/scout/store';
 import type { Listing } from '../../src/scout/types';
 import '../../src/ui/base.css';
 import './scout.css';
@@ -29,13 +29,26 @@ const SPONSOR_TAG: Record<string, [string, string]> = {
   'U.S. Citizenship is Required': ['U.S. citizens only', 'bad'],
 };
 
-function Row({ l, isNew, applied }: { l: Listing; isNew: boolean; applied: boolean }) {
+function Sources({ list }: { list: ScoutList }) {
+  return (
+    <>
+      {list.sources.map((src, i) => (
+        <>
+          {i > 0 && ' and '}
+          <a href={src.home} target="_blank" rel="noreferrer">{src.name}</a>
+        </>
+      ))}
+    </>
+  );
+}
+
+function Row({ list, l, isNew, applied }: { list: ListId; l: Listing; isNew: boolean; applied: boolean }) {
   const open = async () => {
     const tab = await chrome.tabs.create({ url: l.url });
     if (tab.id !== undefined) {
-      await chrome.runtime.sendMessage({ type: 'aaf:scoutOpened', tabId: tab.id, listingId: l.id } satisfies Message);
+      await chrome.runtime.sendMessage({ type: 'aaf:scoutOpened', tabId: tab.id, listingId: l.id, list } satisfies Message);
     }
-    if (isNew) await markSeen([l.id]);
+    if (isNew) await markSeen(list, [l.id]);
   };
   const tag = SPONSOR_TAG[l.sponsorship];
   return (
@@ -56,11 +69,11 @@ function Row({ l, isNew, applied }: { l: Listing; isNew: boolean; applied: boole
         <button class="primary" onClick={() => void open()} title="Opens the posting. Auto-fill runs there as usual; a fill marks it applied.">
           Apply
         </button>
-        <button onClick={() => void setApplied(l.id, !applied)} aria-pressed={applied}>
+        <button onClick={() => void setApplied(list, l.id, !applied)} aria-pressed={applied}>
           {applied ? 'Applied ✓' : 'Mark applied'}
         </button>
         {isNew && (
-          <button class="link" onClick={() => void markSeen([l.id])}>
+          <button class="link" onClick={() => void markSeen(list, [l.id])}>
             Dismiss
           </button>
         )}
@@ -69,7 +82,7 @@ function Row({ l, isNew, applied }: { l: Listing; isNew: boolean; applied: boole
   );
 }
 
-function Scout() {
+function ListView({ list }: { list: ScoutList }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [profile, setProfile] = useState<Profile>(emptyProfile());
   const [data, setData] = useState<ScoutData | null>(null);
@@ -81,7 +94,7 @@ function Scout() {
   const [message, setMessage] = useState('');
 
   const refresh = async () => {
-    const [s, p, d, g] = await Promise.all([loadSettings(), loadProfile(), loadScout(), chrome.permissions.contains(SCOUT_PERMISSION)]);
+    const [s, p, d, g] = await Promise.all([loadSettings(), loadProfile(), loadScout(list.id), chrome.permissions.contains(SCOUT_PERMISSION)]);
     setSettings(s);
     setProfile(p);
     setData(d);
@@ -93,7 +106,7 @@ function Scout() {
     const onChange = (_: unknown, area: string) => area === 'local' && void refresh();
     chrome.storage.onChanged.addListener(onChange);
     return () => chrome.storage.onChanged.removeListener(onChange);
-  }, []);
+  }, [list.id]);
 
   // Open on "All open" when there's nothing new.
   useEffect(() => {
@@ -104,20 +117,20 @@ function Scout() {
     if (!data || !settings) return null;
     const fresh = new Set(data.fresh);
     const all = [...data.listings].sort((a, b) => b.postedAt - a.postedAt);
-    const matching = all.filter((l) => matches(l, settings.scout, profile));
+    const matching = all.filter((l) => matches(l, settings[list.settingsKey], profile));
     return {
       new: matching.filter((l) => fresh.has(l.id)),
       matching,
       all,
       applied: all.filter((l) => data.applied[l.id]).sort((a, b) => data.applied[b.id] - data.applied[a.id]),
     };
-  }, [data, settings, profile]);
+  }, [data, settings, profile, list.id]);
 
   const check = async () => {
     setChecking(true);
     setMessage('');
     try {
-      const r: ScoutCheckResponse = await chrome.runtime.sendMessage({ type: 'aaf:scoutCheck' } satisfies Message);
+      const r: ScoutCheckResponse = await chrome.runtime.sendMessage({ type: 'aaf:scoutCheck', list: list.id } satisfies Message);
       if ('error' in r) setMessage(r.error);
       else if (r.status === 'unchanged') setMessage('No changes since the last check.');
       else setMessage(`${r.newMatching} new matching listing${r.newMatching === 1 ? '' : 's'}, ${r.open} open in total.`);
@@ -129,28 +142,33 @@ function Scout() {
   const enable = async () => {
     const ok = await chrome.permissions.request(SCOUT_PERMISSION);
     if (!ok) return;
-    setSettings(await saveSettings({ scout: { ...settings!.scout, enabled: true } }));
+    const next = { ...settings![list.settingsKey], enabled: true };
+    setSettings(await saveSettings(list.settingsKey === 'scout' ? { scout: next } : { coops: next }));
     setGranted(true);
     await check();
   };
 
   if (!settings || !data || !lists) return null;
 
-  if (!settings.scout.enabled || !granted) {
+  const filters = settings[list.settingsKey];
+  const coop = list.id === 'coops';
+
+  if (!filters.enabled || !granted) {
     return (
-      <main>
-        <h1>Internship list</h1>
+      <>
+        <h1>{list.name}</h1>
         <section class="card">
-          <h2>Get notified when new internships open</h2>
+          <h2>Get notified when new {list.noun}s open</h2>
           <p class="muted">
-            Checks <a href={SOURCES[0].home} target="_blank" rel="noreferrer">{SOURCES[0].name}</a> every hour and tells you when
-            new postings match your filters. The list is public; nothing about you is sent.
+            Checks <Sources list={list} /> every hour
+            {coop && ', keeping only Spring 2027 roles with “co-op” in the title,'} and tells you when new postings match your
+            filters. The lists are public; nothing about you is sent.
           </p>
           <button class="primary" onClick={() => void enable()}>
             Turn on
           </button>
         </section>
-      </main>
+      </>
     );
   }
 
@@ -165,20 +183,21 @@ function Scout() {
     ['applied', 'Applied'],
   ];
   const filtersOn =
-    settings.scout.seasons.length ||
-    settings.scout.locations ||
-    settings.scout.include ||
-    settings.scout.exclude ||
-    settings.scout.hideCompanies ||
-    hidesNoSponsorship(settings.scout, profile);
+    filters.seasons.length ||
+    filters.locations ||
+    filters.include ||
+    filters.exclude ||
+    filters.hideCompanies ||
+    hidesNoSponsorship(filters, profile);
 
   return (
-    <main>
+    <>
       <header class="top">
         <div>
-          <h1>Internship list</h1>
+          <h1>{list.name}</h1>
           <p class="muted">
-            From <a href={SOURCES[0].home} target="_blank" rel="noreferrer">{SOURCES[0].name}</a>. Checked {ago(data.meta.lastCheck)}
+            From <Sources list={list} />
+            {coop && ' (Spring 2027, co-op titles only)'}. Checked {ago(data.meta.lastCheck)}
             {data.meta.lastChange > 0 && <>, last updated {ago(data.meta.lastChange)}</>}.
           </p>
           {data.meta.error && <p class="error">Last check failed: {data.meta.error}</p>}
@@ -221,7 +240,7 @@ function Scout() {
 
       {tab === 'new' && lists.new.length > 0 && (
         <div class="subbar">
-          <button class="link" onClick={() => void markSeen('all')}>
+          <button class="link" onClick={() => void markSeen(list.id, 'all')}>
             Mark all as seen
           </button>
         </div>
@@ -238,7 +257,7 @@ function Scout() {
       ) : (
         <ul class="list">
           {shown.slice(0, limit).map((l) => (
-            <Row key={l.id} l={l} isNew={data.fresh.includes(l.id)} applied={!!data.applied[l.id]} />
+            <Row key={l.id} list={list.id} l={l} isNew={data.fresh.includes(l.id)} applied={!!data.applied[l.id]} />
           ))}
         </ul>
       )}
@@ -247,6 +266,50 @@ function Scout() {
           Show more ({shown.length - limit} left)
         </button>
       )}
+    </>
+  );
+}
+
+/** Internships and co-ops are separate lists; `?list=coops` picks the co-op one. */
+function Scout() {
+  const [list, setList] = useState<ListId>(() => listById(new URLSearchParams(location.search).get('list')).id);
+  const [counts, setCounts] = useState<Record<ListId, number>>({ internships: 0, coops: 0 });
+
+  useEffect(() => {
+    document.title = LISTS[list].name;
+  }, [list]);
+
+  useEffect(() => {
+    const load = async () => {
+      const got = await chrome.storage.local.get(LIST_IDS.map((id) => scoutKeys(id).fresh));
+      const n = (id: ListId) => ((got[scoutKeys(id).fresh] as string[] | undefined) ?? []).length;
+      setCounts({ internships: n('internships'), coops: n('coops') });
+    };
+    void load();
+    const onChange = (_: unknown, area: string) => area === 'local' && void load();
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
+  }, []);
+
+  const pick = (id: ListId) => {
+    setList(id);
+    const url = new URL(location.href);
+    if (id === 'internships') url.searchParams.delete('list');
+    else url.searchParams.set('list', id);
+    history.replaceState(null, '', url);
+  };
+
+  return (
+    <main>
+      <nav class="sections" aria-label="Job lists">
+        {LIST_IDS.map((id) => (
+          <button class={list === id ? 'section on' : 'section'} aria-current={list === id ? 'page' : undefined} onClick={() => pick(id)}>
+            {LISTS[id].label}
+            {counts[id] > 0 && <span class="pill new">{counts[id]} new</span>}
+          </button>
+        ))}
+      </nav>
+      <ListView key={list} list={LISTS[list]} />
     </main>
   );
 }

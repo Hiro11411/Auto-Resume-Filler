@@ -1,5 +1,6 @@
 import type { FieldType, Summary } from '../engine/types';
 import type { Answers, FileKind, FilesMeta, Profile, SavedAnswer, Settings, StoredFile } from '../profile/schema';
+import type { ListId } from '../scout/lists';
 import type { ScoutResult } from '../scout/types';
 
 export type Message =
@@ -18,8 +19,8 @@ export type Message =
   | { type: 'aaf:map'; questions: { label: string; options: string[] }[] }
   // popup / scout page → background
   | { type: 'aaf:getSummary'; tabId: number }
-  | { type: 'aaf:scoutCheck' }
-  | { type: 'aaf:scoutOpened'; tabId: number; listingId: string };
+  | { type: 'aaf:scoutCheck'; list?: ListId }
+  | { type: 'aaf:scoutOpened'; tabId: number; listingId: string; list?: ListId };
 
 /** What a content script gets: never the API key (see `forContent`), and file names only. */
 export interface ContentData {

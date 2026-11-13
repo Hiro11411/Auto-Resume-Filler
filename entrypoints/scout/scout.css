@@ -41,3 +41,10 @@ a { color: var(--accent); }
   .row { flex-direction: column; align-items: stretch; }
   .row .actions { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+.sections { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.section {
+  display: inline-flex; gap: 6px; align-items: center; background: none; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; padding: 8px 12px; margin-bottom: -1px; font-weight: 500; color: var(--muted);
+}
+.section.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }

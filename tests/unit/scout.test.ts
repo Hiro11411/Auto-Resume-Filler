@@ -3,6 +3,7 @@ import { pickAdapter } from '../../src/adapters';
 import { defaultSettings, emptyProfile, type ScoutSettings } from '../../src/profile/schema';
 import { diffFeed, snapshotOf } from '../../src/scout/diff';
 import { matches } from '../../src/scout/filter';
+import { dedupe, isSpring2027Coop } from '../../src/scout/lists';
 import { normalize } from '../../src/scout/sources';
 import type { Listing } from '../../src/scout/types';
 
@@ -78,6 +79,38 @@ describe('scout filters', () => {
     expect(ids(scout(), needs)).toEqual(['a']);
     expect(ids(scout({ sponsorship: 'show' }), needs)).toEqual(['a', 'b']);
     expect(ids(scout({ sponsorship: 'hide' }))).toEqual(['a']);
+  });
+});
+
+describe('Spring 2027 co-op list', () => {
+  const simplify = (title: string, terms: string[], extra = {}) =>
+    normalize([{ id: title, company_name: 'Acme', title, url: 'https://go.example/s', locations: [], terms, active: true, date_posted: 1, ...extra }], 'simplify-2027')[0];
+  const vansh = (title: string, season: string) =>
+    normalize([{ id: title, company_name: 'Acme', title, url: 'https://go.example/v', locations: [], season, active: true, date_posted: 1 }], 'vanshb03-2027')[0];
+
+  it('keeps Spring 2027 roles with co-op in the title', () => {
+    expect(isSpring2027Coop(simplify('Software Co-op', ['Winter 2027', 'Spring 2027']))).toBe(true);
+    expect(isSpring2027Coop(simplify('Data Engineer Co-Op', ['Spring 2027']))).toBe(true);
+    expect(isSpring2027Coop(simplify('Platform Coop', ['Spring 2027']))).toBe(true);
+    expect(isSpring2027Coop(vansh('Software Co-op', 'Spring'))).toBe(true);
+  });
+  it('drops interns, other terms and look-alike words', () => {
+    expect(isSpring2027Coop(simplify('SWE Intern', ['Spring 2027']))).toBe(false);
+    expect(isSpring2027Coop(simplify('Software Co-op', ['Fall 2026']))).toBe(false);
+    expect(isSpring2027Coop(simplify('Software Co-op', ['Spring 2026']))).toBe(false);
+    expect(isSpring2027Coop(simplify('Cooperative Systems Intern', ['Spring 2027']))).toBe(false);
+    expect(isSpring2027Coop(vansh('Software Co-op', 'Summer'))).toBe(false);
+  });
+  it('keeps one copy of a role listed in both feeds, the first source winning', () => {
+    const a = simplify('Software Co-op', ['Spring 2027']);
+    const b = vansh('Software Co-op', 'Spring');
+    const sameFeed = { ...a, id: 'a-boston' };
+    expect(dedupe([a, sameFeed, b]).map((l) => `${l.source}:${l.id}`)).toEqual(['simplify-2027:Software Co-op', 'simplify-2027:a-boston']);
+  });
+  it('does not let a closed copy hide an open one', () => {
+    const closed = { ...simplify('Software Co-op', ['Spring 2027']), active: false };
+    const open = vansh('Software Co-op', 'Spring');
+    expect(dedupe([closed, open]).filter((l) => l.active).map((l) => l.source)).toEqual(['vanshb03-2027']);
   });
 });
 

@@ -103,6 +103,8 @@ export interface Settings {
   /** Remember answers to custom questions and reuse them on later applications. */
   rememberAnswers: boolean;
   scout: ScoutSettings;
+  /** Spring 2027 co-op list; same filters as `scout`, seasons unused. */
+  coops: ScoutSettings;
   ai: {
     enabled: boolean;
     apiKey: string;
@@ -200,6 +202,16 @@ export const defaultSettings = (): Settings => ({
   autoContinue: true,
   rememberAnswers: true,
   scout: {
+    enabled: false,
+    notify: true,
+    seasons: [],
+    locations: '',
+    include: '',
+    exclude: '',
+    hideCompanies: '',
+    sponsorship: 'auto',
+  },
+  coops: {
     enabled: false,
     notify: true,
     seasons: [],

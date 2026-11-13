@@ -55,8 +55,8 @@ Auto mode works out of the box on Greenhouse, Lever, Ashby, Workday, iCIMS, Smar
 | `src/resume/` | PDF/DOCX text extraction and offline resume parsing |
 | `src/ai/` | Optional Claude calls (field mapping, drafts, resume structuring) |
 | `src/ext/` | Messaging between the background worker, popup and page scripts |
-| `src/scout/` | Internship feed: fetch (ETag), diff, filters, storage. Add feeds in `sources.ts` |
-| `entrypoints/scout/` | The internship list page |
+| `src/scout/` | Internship and Spring 2027 co-op feeds: fetch (ETag), diff, filters, storage. Lists and their feeds are defined in `lists.ts` |
+| `entrypoints/scout/` | The job list page (Internships and Co-ops sections; `?list=coops`) |
 | `tests/fixtures/` | HTML snapshots of application forms used by both test suites |
 
 ## Contributing

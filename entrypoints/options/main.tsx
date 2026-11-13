@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { structureResume } from '../../src/ai/client';
 import { AI_ORIGIN } from '../../src/ext/hosts';
+import type { Message } from '../../src/ext/messages';
 import { extractResume } from '../../src/resume/extract';
 import { fromAi, mergeExtracted } from '../../src/resume/merge';
 import { fileToDataUrl, resumeToText } from '../../src/resume/parse';
@@ -18,7 +19,7 @@ import {
 } from '../../src/profile/storage';
 import { SEASONS } from '../../src/scout/filter';
 import { SCOUT_PERMISSION } from '../../src/scout/run';
-import { SOURCES } from '../../src/scout/sources';
+import { LIST_IDS, LISTS, type ListId, type ScoutList } from '../../src/scout/lists';
 import { clearFeed } from '../../src/scout/store';
 import { Switch } from '../../src/ui/Switch';
 import { Area, Choice, DECLINE, Section, SettingRow, setIn, Text, YES_NO, type Path } from './fields';
@@ -138,23 +139,22 @@ function Options() {
     await updateSettings({ ai: { ...settings.ai, enabled: on } });
   };
 
-  const updateScout = (patch: Partial<ScoutSettings>) => updateSettings({ scout: { ...settings.scout, ...patch } });
+  const updateList = (id: ListId, patch: Partial<ScoutSettings>) => {
+    const key = LISTS[id].settingsKey;
+    const next = { ...settings[key], ...patch };
+    return updateSettings(key === 'scout' ? { scout: next } : { coops: next });
+  };
 
-  const toggleScout = async (on: boolean) => {
+  const toggleList = async (id: ListId, on: boolean) => {
     if (on) {
       const ok = await chrome.permissions.request(SCOUT_PERMISSION);
       if (!ok) return;
-      await updateScout({ enabled: true });
-      void chrome.runtime.sendMessage({ type: 'aaf:scoutCheck' });
+      await updateList(id, { enabled: true });
+      void chrome.runtime.sendMessage({ type: 'aaf:scoutCheck', list: id } satisfies Message);
     } else {
-      await updateScout({ enabled: false });
-      await clearFeed();
+      await updateList(id, { enabled: false });
+      await clearFeed(id);
     }
-  };
-
-  const toggleSeason = (season: string, on: boolean) => {
-    const rest = settings.scout.seasons.filter((x) => x !== season);
-    void updateScout({ seasons: on ? [...rest, season] : rest });
   };
 
   const savedAnswers = Object.entries(answers).sort(([, a], [, b]) => b.at - a.at);
@@ -440,61 +440,14 @@ function Options() {
         )}
       </section>
 
-      <section>
-        <h2>Internship alerts</h2>
-        <p class="muted desc">
-          Checks <a href={SOURCES[0].home} target="_blank" rel="noreferrer">{SOURCES[0].name}</a> every hour and notifies you when new
-          postings match these filters. The list is public; nothing about you is sent.{' '}
-          <a href={chrome.runtime.getURL('/scout.html')} target="_blank" rel="noreferrer">
-            Open the internship list
-          </a>
-        </p>
-        <div class="settings">
-          <SettingRow title="Check for new internships" desc="Chrome will ask for access to raw.githubusercontent.com, where the list is published.">
-            <Switch label="Check for new internships" checked={settings.scout.enabled} onChange={(v) => void toggleScout(v)} />
-          </SettingRow>
-          {settings.scout.enabled && (
-            <>
-              <SettingRow title="Desktop notifications" desc="Off: new listings only show as a count on the toolbar icon.">
-                <Switch label="Desktop notifications" checked={settings.scout.notify} onChange={(v) => void updateScout({ notify: v })} />
-              </SettingRow>
-              <div class="grid">
-                <div class="field wide">
-                  <label>Seasons (none ticked means all)</label>
-                  <div class="chips">
-                    {SEASONS.map((season) => (
-                      <label class="chip">
-                        <input
-                          type="checkbox"
-                          checked={settings.scout.seasons.includes(season)}
-                          onChange={(e) => toggleSeason(season, (e.currentTarget as HTMLInputElement).checked)}
-                        />{' '}
-                        {season}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <ScoutText label="Locations" hint="Comma-separated; any match. e.g. NY, Boston, Remote" value={settings.scout.locations} onSave={(v) => updateScout({ locations: v })} />
-                <ScoutText label="Title must include" hint="e.g. software, data, ML" value={settings.scout.include} onSave={(v) => updateScout({ include: v })} />
-                <ScoutText label="Hide titles with" hint="e.g. PhD, hardware" value={settings.scout.exclude} onSave={(v) => updateScout({ exclude: v })} />
-                <ScoutText label="Hide companies" hint="Exact names, comma-separated" value={settings.scout.hideCompanies} onSave={(v) => updateScout({ hideCompanies: v })} />
-                <div class="field">
-                  <label for="scout-sponsor">Listings without visa sponsorship</label>
-                  <select
-                    id="scout-sponsor"
-                    value={settings.scout.sponsorship}
-                    onChange={(e) => void updateScout({ sponsorship: (e.currentTarget as HTMLSelectElement).value as ScoutSettings['sponsorship'] })}
-                  >
-                    <option value="auto">Hide if I need sponsorship (from profile)</option>
-                    <option value="hide">Always hide</option>
-                    <option value="show">Always show</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
+      {LIST_IDS.map((id) => (
+        <ListAlerts
+          list={LISTS[id]}
+          value={settings[LISTS[id].settingsKey]}
+          onPatch={(patch) => updateList(id, patch)}
+          onToggle={(on) => toggleList(id, on)}
+        />
+      ))}
 
       <div class="savebar" role="region" aria-label="Save">
         <span class="muted" aria-live="polite">
@@ -509,8 +462,93 @@ function Options() {
 }
 
 /** A settings text box that saves when you leave it, not on every keystroke. */
-function ScoutText({ label, hint, value, onSave }: { label: string; hint: string; value: string; onSave(v: string): Promise<unknown> }) {
-  const id = `scout-${label.toLowerCase().replace(/\W+/g, '-')}`;
+function ListAlerts({
+  list,
+  value,
+  onPatch,
+  onToggle,
+}: {
+  list: ScoutList;
+  value: ScoutSettings;
+  onPatch(patch: Partial<ScoutSettings>): Promise<unknown>;
+  onToggle(on: boolean): Promise<void>;
+}) {
+  const coop = list.id === 'coops';
+  const id = (name: string) => `${list.id}-${name}`;
+  const toggleSeason = (season: string, on: boolean) => {
+    const rest = value.seasons.filter((x) => x !== season);
+    void onPatch({ seasons: on ? [...rest, season] : rest });
+  };
+  const checkLabel = coop ? 'Check for new Spring 2027 co-ops' : 'Check for new internships';
+  return (
+    <section>
+      <h2>{coop ? 'Co-op alerts (Spring 2027)' : 'Internship alerts'}</h2>
+      <p class="muted desc">
+        Checks{' '}
+        {list.sources.map((src, i) => (
+          <>
+            {i > 0 && ' and '}
+            <a href={src.home} target="_blank" rel="noreferrer">{src.name}</a>
+          </>
+        ))}{' '}
+        every hour{coop && ', keeping only Spring 2027 roles with “co-op” in the title,'} and notifies you when new postings match these filters.
+        The lists are public; nothing about you is sent.{' '}
+        <a href={chrome.runtime.getURL(coop ? '/scout.html?list=coops' : '/scout.html')} target="_blank" rel="noreferrer">
+          Open the {coop ? 'co-op' : 'internship'} list
+        </a>
+      </p>
+      <div class="settings">
+        <SettingRow title={checkLabel} desc="Chrome will ask for access to raw.githubusercontent.com, where the lists are published.">
+          <Switch label={checkLabel} checked={value.enabled} onChange={(v) => void onToggle(v)} />
+        </SettingRow>
+        {value.enabled && (
+          <>
+            <SettingRow title="Desktop notifications" desc="Off: new listings only show as a count on the toolbar icon.">
+              <Switch label={`Desktop notifications for ${list.noun}s`} checked={value.notify} onChange={(v) => void onPatch({ notify: v })} />
+            </SettingRow>
+            <div class="grid">
+              {!coop && (
+                <div class="field wide">
+                  <label>Seasons (none ticked means all)</label>
+                  <div class="chips">
+                    {SEASONS.map((season) => (
+                      <label class="chip">
+                        <input
+                          type="checkbox"
+                          checked={value.seasons.includes(season)}
+                          onChange={(e) => toggleSeason(season, (e.currentTarget as HTMLInputElement).checked)}
+                        />{' '}
+                        {season}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <ScoutText id={id('locations')} label="Locations" hint="Comma-separated; any match. e.g. NY, Boston, Remote" value={value.locations} onSave={(v) => onPatch({ locations: v })} />
+              <ScoutText id={id('include')} label="Title must include" hint="e.g. software, data, ML" value={value.include} onSave={(v) => onPatch({ include: v })} />
+              <ScoutText id={id('exclude')} label="Hide titles with" hint="e.g. PhD, hardware" value={value.exclude} onSave={(v) => onPatch({ exclude: v })} />
+              <ScoutText id={id('companies')} label="Hide companies" hint="Exact names, comma-separated" value={value.hideCompanies} onSave={(v) => onPatch({ hideCompanies: v })} />
+              <div class="field">
+                <label for={id('sponsor')}>Listings without visa sponsorship</label>
+                <select
+                  id={id('sponsor')}
+                  value={value.sponsorship}
+                  onChange={(e) => void onPatch({ sponsorship: (e.currentTarget as HTMLSelectElement).value as ScoutSettings['sponsorship'] })}
+                >
+                  <option value="auto">Hide if I need sponsorship (from profile)</option>
+                  <option value="hide">Always hide</option>
+                  <option value="show">Always show</option>
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScoutText({ id, label, hint, value, onSave }: { id: string; label: string; hint: string; value: string; onSave(v: string): Promise<unknown> }) {
   return (
     <div class="field">
       <label for={id}>{label}</label>

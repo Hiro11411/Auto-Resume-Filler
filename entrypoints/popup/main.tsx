@@ -5,7 +5,8 @@ import type { Message } from '../../src/ext/messages';
 import { triggerFill } from '../../src/ext/trigger';
 import { isProfileEmpty, type Settings } from '../../src/profile/schema';
 import { loadProfile, loadSettings, saveSettings } from '../../src/profile/storage';
-import { SCOUT_KEYS } from '../../src/scout/store';
+import { LIST_IDS, LISTS, plural, type ListId } from '../../src/scout/lists';
+import { scoutKeys } from '../../src/scout/store';
 import { Switch } from '../../src/ui/Switch';
 import '../../src/ui/base.css';
 import './popup.css';
@@ -25,7 +26,7 @@ function Popup() {
   const [noProfile, setNoProfile] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [fresh, setFresh] = useState(0);
+  const [fresh, setFresh] = useState<Record<ListId, number>>({ internships: 0, coops: 0 });
 
   const host = hostOf(tab?.url);
   const paused = !!settings && settings.pausedSites.includes(host);
@@ -41,10 +42,11 @@ function Popup() {
         loadSettings(),
         loadProfile(),
         chrome.tabs.query({ active: true, currentWindow: true }),
-        chrome.storage.local.get(SCOUT_KEYS.fresh),
+        chrome.storage.local.get(LIST_IDS.map((id) => scoutKeys(id).fresh)),
       ]);
       setSettings(s);
-      setFresh(((scout[SCOUT_KEYS.fresh] as string[] | undefined) ?? []).length);
+      const count = (id: ListId) => ((scout[scoutKeys(id).fresh] as string[] | undefined) ?? []).length;
+      setFresh({ internships: count('internships'), coops: count('coops') });
       setNoProfile(isProfileEmpty(p));
       setTab(t ?? null);
       if (t?.id !== undefined) await refreshSummary(t.id);
@@ -118,11 +120,14 @@ function Popup() {
       </button>
       {error && <div class="muted">{error}</div>}
 
-      {settings.scout.enabled && (
-        <button class="scout" onClick={() => void chrome.tabs.create({ url: chrome.runtime.getURL('/scout.html') })}>
-          {fresh ? `${fresh} new internship${fresh === 1 ? '' : 's'} to apply to` : 'Internship list'}
+      {LIST_IDS.filter((id) => settings[LISTS[id].settingsKey].enabled).map((id) => (
+        <button
+          class="scout"
+          onClick={() => void chrome.tabs.create({ url: chrome.runtime.getURL(id === 'internships' ? '/scout.html' : `/scout.html?list=${id}`) })}
+        >
+          {fresh[id] ? `${plural(fresh[id], LISTS[id].noun)} to apply to` : LISTS[id].name}
         </button>
-      )}
+      ))}
 
       {summary && (
         <div class="card">
