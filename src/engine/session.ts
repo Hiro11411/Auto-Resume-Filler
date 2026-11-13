@@ -1,10 +1,11 @@
-import { pickAdapter } from '../adapters';
-import type { Files, Profile, Settings } from '../profile/schema';
+import { pickAdapter, type Adapter } from '../adapters';
+import type { Answers, FileKind, FilesMeta, Profile, SavedAnswer, Settings, StoredFile } from '../profile/schema';
+import { answerKey, readAnswer, savedAnswer } from './answers';
 import { classifyAll } from './classify';
 import { StepWatcher } from './continue';
 import { isApplicationForm, type Detection } from './detect';
 import { discover, OVERLAY_HOST_ID } from './discover';
-import { applyFill, type Undo } from './fill';
+import { applyFill, isSlow, type FillContext, type Undo } from './fill';
 import { Overlay } from './overlay';
 import { CONFIDENT, decide, hasValue } from './policy';
 import { SENSITIVE_TYPES, type Classified, type FieldResult, type FieldType, type Summary } from './types';
@@ -14,16 +15,25 @@ import { setText, sleep } from './widgets/native';
 /** Delay before asking the page whether filled fields are valid. */
 const VALIDATE_AFTER_MS = 300;
 
+/** Wait this long after the user's last click / keystroke before saving answers. */
+const SAVE_ANSWERS_AFTER_MS = 400;
+
 export interface SessionData {
   profile: Profile;
   settings: Settings;
-  files: Files;
+  /** File names; the bytes come from `SessionDeps.loadFile` (or are inline, in tests). */
+  files: FilesMeta;
+  answers?: Answers;
 }
 
 export interface SessionDeps {
   doc: Document;
   load(): Promise<SessionData>;
   report?(summary: Summary): void;
+  /** Fetch a stored file's bytes. Without it, `files` must carry them inline. */
+  loadFile?(kind: FileKind): Promise<StoredFile | undefined>;
+  /** Persist an answer the user gave to a custom question. */
+  saveAnswer?(key: string, answer: SavedAnswer): void;
   /** AI: draft an answer for a free-text question. */
   draft?(question: string, jobDescription: string): Promise<string>;
   /** AI: map required questions we couldn't classify onto profile field types. */
@@ -51,6 +61,11 @@ function jobDescription(doc: Document): string {
 
 export class FillSession {
   private processed = new WeakSet<HTMLElement>();
+  /** Classified fields from earlier passes, so watcher passes skip label resolution. */
+  private known = new WeakMap<HTMLElement, Classified>();
+  /** Last answer saved per question key, so the same answer isn't sent twice. */
+  private savedKeys = new Map<string, string>();
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
   private touched = new WeakSet<HTMLElement>();
   private results: FieldResult[] = [];
   private undos: Undo[] = [];
@@ -64,6 +79,11 @@ export class FillSession {
     if (!e.isTrusted || !(e.target instanceof HTMLElement)) return;
     this.touched.add(e.target);
     this.onUserAnswer(e.target);
+    this.scheduleSaveAnswers();
+  };
+  /** Custom dropdowns (Workday, react-select) change on clicks, not input events. */
+  private onUserClick = (e: Event) => {
+    if (e.isTrusted) this.scheduleSaveAnswers();
   };
 
   constructor(private deps: SessionDeps) {
@@ -84,6 +104,7 @@ export class FillSession {
     );
     doc.addEventListener('input', this.onUserInput, true);
     doc.addEventListener('change', this.onUserInput, true);
+    doc.addEventListener('click', this.onUserClick, true);
   }
 
   get watching(): boolean {
@@ -109,7 +130,7 @@ export class FillSession {
     const doc = this.deps.doc;
     const data = await this.deps.load();
     const adapter = pickAdapter(doc.location?.hostname ?? '');
-    const { fields, hasPassword } = discover(doc);
+    const { fields, hasPassword } = discover(doc, { reuse: (el) => (this.processed.has(el) ? this.known.get(el) : undefined) });
     const classified = classifyAll(fields, adapter.rules);
 
     const detection = isApplicationForm(doc, classified, hasPassword, adapter);
@@ -122,55 +143,82 @@ export class FillSession {
     if (fromWatcher && fresh.length === 0) return { detection, summary: this.summary() };
 
     const unknownRequired: Classified[] = [];
+    const slow: Classified[] = [];
+    const ctx = this.fillContext(data);
 
+    // Phase 1: everything that fills instantly (text, selects, radios, files), in page order.
     for (const f of fresh) {
       const key = keyOf(f);
       this.processed.add(key);
+      this.known.set(key, f);
       if (this.touched.has(key) || this.touched.has(f.el)) continue;
-      if (f.type === 'unknown' && f.required && this.deps.mapUnknown && data.settings.ai.enabled) {
+      const remembered = data.settings.rememberAnswers && savedAnswer(f, data.answers);
+      if (f.type === 'unknown' && f.required && !remembered && this.deps.mapUnknown && data.settings.ai.enabled) {
         unknownRequired.push(f);
         continue;
       }
-      await this.fillField(f, data);
+      if (isSlow(f, adapter.widgets)) {
+        slow.push(f);
+        continue;
+      }
+      await this.fillField(f, data, ctx, adapter);
     }
+    // Phase 2: controls that wait on the page (dropdowns, suggestion lists). Only one
+    // menu can be open at a time, so they run one after another.
+    for (const f of slow) await this.fillField(f, data, ctx, adapter);
 
-    if (unknownRequired.length) await this.fillWithAiMapping(unknownRequired, data);
+    if (unknownRequired.length) await this.fillWithAiMapping(unknownRequired, data, ctx, adapter);
 
     const live = this.results.filter((r) => r.field.el.isConnected);
     this.results = live;
+    const visible = live.some((r) => r.status === 'filled' || r.status === 'check' || r.status === 'missing' || r.status === 'freeText');
+    // Show the panel right away; validity is checked afterwards and only re-renders if it changed something.
+    if (visible) this.overlay.render(live, data.settings.autoContinue);
     // Pages validate on change, sometimes asynchronously; give them a moment, then ask.
     if (live.some((r) => r.status === 'filled' || r.status === 'check')) {
       await sleep(VALIDATE_AFTER_MS);
-      this.checkValidity(live);
+      if (this.checkValidity(live) && this.overlay.isOpen) this.overlay.render(live, data.settings.autoContinue);
     }
-    const visible = live.some((r) => r.status === 'filled' || r.status === 'check' || r.status === 'missing' || r.status === 'freeText');
-    if (visible) this.overlay.render(live, data.settings.autoContinue);
     const summary = this.summary();
     this.deps.report?.(summary);
     return { detection, summary };
   }
 
-  private async fillField(f: Classified, data: SessionData): Promise<void> {
-    const d = decide(f, data.profile, data.settings, data.files);
+  private fillContext(data: SessionData): FillContext {
+    return {
+      loadFile:
+        this.deps.loadFile ??
+        (async (kind) => {
+          const f = data.files[kind];
+          return f && 'dataUrl' in f ? (f as StoredFile) : undefined;
+        }),
+    };
+  }
+
+  private async fillField(f: Classified, data: SessionData, ctx: FillContext, adapter: Adapter): Promise<void> {
+    const d = decide(f, data.profile, data.settings, data.files, data.answers);
     if (d.action === 'skip') {
       this.record(f, d.status, undefined, d.note);
       return;
     }
     try {
-      const out = await applyFill(f, d.value, data.files);
+      const out = await applyFill(f, d.value, ctx, adapter.widgets);
       if (out.score === 0) {
         if (hasValue(f)) this.undos.push(out.undo); // e.g. typed into a typeahead with no pick
         this.record(f, f.required ? 'missing' : 'check', d.value, out.note ?? `Couldn't apply "${d.value}".`);
         return;
       }
       this.undos.push(out.undo);
-      this.record(f, d.confident && out.score >= CONFIDENT ? 'filled' : 'check', d.value, out.note);
+      // Filled from a saved answer: remember that, so it isn't saved again unchanged.
+      const key = d.note ? answerKey(f) : null;
+      if (key) this.savedKeys.set(key, d.value);
+      this.record(f, d.confident && out.score >= CONFIDENT ? 'filled' : 'check', d.value, out.note ?? d.note);
     } catch (err) {
       this.record(f, f.required ? 'missing' : 'check', d.value, `Fill failed: ${(err as Error).message}`);
     }
   }
 
-  private async fillWithAiMapping(fields: Classified[], data: SessionData): Promise<void> {
+  private async fillWithAiMapping(fields: Classified[], data: SessionData, ctx: FillContext, adapter: Adapter): Promise<void> {
     let mapped: (FieldType | null)[] = [];
     try {
       mapped = await this.deps.mapUnknown!(fields.map((f) => ({ label: f.label, options: optionsOf(f) })));
@@ -182,7 +230,7 @@ export class FillSession {
       // Belt and braces: legal questions are never answered from an AI guess.
       if (type && type !== 'unknown' && type !== 'freeText' && !SENSITIVE_TYPES.has(type)) {
         // AI mappings are never "confident": always shown as "check this".
-        await this.fillField({ ...f, type, confidence: 0.6 }, data);
+        await this.fillField({ ...f, type, confidence: 0.6 }, data, ctx, adapter);
       } else {
         this.record(f, 'missing');
       }
@@ -196,14 +244,17 @@ export class FillSession {
 
   /**
    * Log and flag fields the page still reports as invalid: every field we
-   * filled, and every required field the user has answered since.
+   * filled, and every required field the user has answered since. Returns
+   * whether anything changed.
    */
-  private checkValidity(results: FieldResult[]): void {
+  private checkValidity(results: FieldResult[]): boolean {
+    let changed = false;
     for (const r of results) {
       const ours = r.status === 'filled' || r.status === 'check';
       if (!(ours || (r.status === 'answered' && r.field.required))) continue;
       const reason = invalidReason(r.field);
       if (reason === (r.invalid ?? null)) continue;
+      changed = true;
       r.invalid = reason ?? undefined;
       if (reason) {
         console.warn(`[Apply Autofill] Still invalid after filling: "${r.field.label || r.field.type}" (${r.field.type}): ${reason}`, r.field.el);
@@ -211,6 +262,26 @@ export class FillSession {
       } else {
         this.overlay.mark(r.field.anchor, r.status);
       }
+    }
+    return changed;
+  }
+
+  private scheduleSaveAnswers(): void {
+    if (!this.deps.saveAnswer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveAnswers(), SAVE_ANSWERS_AFTER_MS);
+  }
+
+  /** Save what the user has answered on custom questions the rules couldn't fill. */
+  saveAnswers(): void {
+    if (!this.deps.saveAnswer) return;
+    for (const r of this.results) {
+      if (!r.field.el.isConnected) continue;
+      const value = readAnswer(r.field);
+      const key = value ? answerKey(r.field) : null;
+      if (!value || !key || this.savedKeys.get(key) === value) continue;
+      this.savedKeys.set(key, value);
+      this.deps.saveAnswer(key, { label: r.field.label, value, at: Date.now() });
     }
   }
 
@@ -283,5 +354,7 @@ export class FillSession {
     this.stop();
     this.deps.doc.removeEventListener('input', this.onUserInput, true);
     this.deps.doc.removeEventListener('change', this.onUserInput, true);
+    this.deps.doc.removeEventListener('click', this.onUserClick, true);
+    clearTimeout(this.saveTimer);
   }
 }

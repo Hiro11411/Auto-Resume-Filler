@@ -5,6 +5,7 @@ import type { Message } from '../../src/ext/messages';
 import { triggerFill } from '../../src/ext/trigger';
 import { isProfileEmpty, type Settings } from '../../src/profile/schema';
 import { loadProfile, loadSettings, saveSettings } from '../../src/profile/storage';
+import { SCOUT_KEYS } from '../../src/scout/store';
 import { Switch } from '../../src/ui/Switch';
 import '../../src/ui/base.css';
 import './popup.css';
@@ -24,6 +25,7 @@ function Popup() {
   const [noProfile, setNoProfile] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fresh, setFresh] = useState(0);
 
   const host = hostOf(tab?.url);
   const paused = !!settings && settings.pausedSites.includes(host);
@@ -35,8 +37,14 @@ function Popup() {
 
   useEffect(() => {
     void (async () => {
-      const [s, p, [t]] = await Promise.all([loadSettings(), loadProfile(), chrome.tabs.query({ active: true, currentWindow: true })]);
+      const [s, p, [t], scout] = await Promise.all([
+        loadSettings(),
+        loadProfile(),
+        chrome.tabs.query({ active: true, currentWindow: true }),
+        chrome.storage.local.get(SCOUT_KEYS.fresh),
+      ]);
       setSettings(s);
+      setFresh(((scout[SCOUT_KEYS.fresh] as string[] | undefined) ?? []).length);
       setNoProfile(isProfileEmpty(p));
       setTab(t ?? null);
       if (t?.id !== undefined) await refreshSummary(t.id);
@@ -109,6 +117,12 @@ function Popup() {
         {busy ? 'Filling…' : 'Fill this page'}
       </button>
       {error && <div class="muted">{error}</div>}
+
+      {settings.scout.enabled && (
+        <button class="scout" onClick={() => void chrome.tabs.create({ url: chrome.runtime.getURL('/scout.html') })}>
+          {fresh ? `${fresh} new internship${fresh === 1 ? '' : 's'} to apply to` : 'Internship list'}
+        </button>
+      )}
 
       {summary && (
         <div class="card">

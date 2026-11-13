@@ -1,6 +1,6 @@
 import { isVisible } from '../discover';
 import { bestOfValues } from './choice';
-import { realClick, setNativeValue, sleep, waitFor } from './native';
+import { realClick, setNativeValue, waitForList } from './native';
 
 /**
  * Suggestion rows from common typeahead widgets. Lever's location box renders
@@ -18,6 +18,8 @@ const SUGGESTION_SELECTOR = [
 
 /** Lever and others only search on a keypress, then wait ~500 ms and call the network. */
 const SUGGESTION_TIMEOUT_MS = 4000;
+/** Suggestion lists re-render as results stream in; this much quiet means they're done. */
+const QUIET_MS = 150;
 
 function suggestions(doc: Document, exclude: ReadonlySet<Element>): HTMLElement[] {
   return [...doc.querySelectorAll<HTMLElement>(SUGGESTION_SELECTOR)].filter(
@@ -48,17 +50,16 @@ export async function fillTypeahead(el: HTMLInputElement, value: string, query =
   el.dispatchEvent(new InputEvent('input', { bubbles: true, data: query, inputType: 'insertText' }));
   el.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
 
-  const appeared = await waitFor(() => {
-    const list = suggestions(doc, before);
-    return list.length ? list : null;
-  }, SUGGESTION_TIMEOUT_MS);
-  if (!appeared) {
+  const text = (r: HTMLElement) => r.textContent ?? '';
+  const rows = await waitForList(doc, () => suggestions(doc, before), {
+    timeout: SUGGESTION_TIMEOUT_MS,
+    quietMs: QUIET_MS,
+    done: (list) => bestOfValues(list.map(text), value).score >= 1,
+  });
+  if (!rows) {
     return { score: 0, note: 'No suggestions appeared. Typed text left in place; pick from the list if the site requires it.' };
   }
-  // Lists keep updating briefly after they first render.
-  await sleep(200);
-  const rows = suggestions(doc, before);
-  const m = bestOfValues(rows.map((r) => r.textContent ?? ''), value);
+  const m = bestOfValues(rows.map(text), value);
   if (m.index < 0) {
     return { score: 0, note: `No suggestion matched "${value}". Pick one from the list.` };
   }

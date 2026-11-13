@@ -35,8 +35,12 @@ export class StepWatcher {
   }
 }
 
-/** Resolve once the DOM has stopped changing for `quietMs` (or after `maxMs`). */
-export function settled(doc: Document, quietMs = 600, maxMs = 8000): Promise<void> {
+/**
+ * Resolve once the DOM has stopped adding / removing nodes for `quietMs` (or after
+ * `maxMs`). Attribute churn (spinners, focus classes) is ignored: it kept busy
+ * SPAs from ever settling, so every first fill waited out the cap.
+ */
+export function settled(doc: Document, quietMs = 400, maxMs = 2500): Promise<void> {
   return new Promise((resolve) => {
     let timer = setTimeout(done, quietMs);
     const cap = setTimeout(done, maxMs);
@@ -44,7 +48,7 @@ export function settled(doc: Document, quietMs = 600, maxMs = 8000): Promise<voi
       clearTimeout(timer);
       timer = setTimeout(done, quietMs);
     });
-    obs.observe(doc.documentElement, { childList: true, subtree: true, attributes: true });
+    obs.observe(doc.documentElement, { childList: true, subtree: true });
     function done() {
       clearTimeout(timer);
       clearTimeout(cap);

@@ -99,7 +99,16 @@ export interface Discovery {
   hasPassword: boolean;
 }
 
-export function discover(doc: Document): Discovery {
+export interface DiscoverOptions {
+  /**
+   * A field already handled in an earlier pass, keyed by its control (the first
+   * input for radio / checkbox groups). Returning it skips label and hint
+   * resolution, the expensive part, on watcher passes.
+   */
+  reuse?(el: HTMLElement): Field | undefined;
+}
+
+export function discover(doc: Document, opts: DiscoverOptions = {}): Discovery {
   const controls: HTMLElement[] = [];
   collectControls(doc, controls);
 
@@ -117,6 +126,11 @@ export function discover(doc: Document): Discovery {
     if (input.disabled) continue;
 
     if (tag === 'INPUT' && type === 'file') {
+      const known = opts.reuse?.(el);
+      if (known) {
+        fields.push(known);
+        continue;
+      }
       const f = base(el, 'file', resolveLabel(el) || el.getAttribute('aria-label') || '');
       f.anchor = nearestVisible(el.closest('label') ?? el.parentElement ?? el);
       fields.push(f);
@@ -134,6 +148,12 @@ export function discover(doc: Document): Discovery {
       continue;
     }
     if (tag === 'INPUT' && SKIP_INPUT_TYPES.has(type)) continue;
+
+    const known = opts.reuse?.(el);
+    if (known) {
+      fields.push(known);
+      continue;
+    }
 
     const role = el.getAttribute('role');
     let kind: FieldKind;
@@ -154,6 +174,11 @@ export function discover(doc: Document): Discovery {
   }
 
   for (const [key, inputs] of groups) {
+    const known = opts.reuse?.(inputs[0]);
+    if (known && (known.choices?.length ?? 1) === inputs.length) {
+      fields.push(known);
+      continue;
+    }
     const isRadio = key.startsWith('radio:');
     if (!isRadio && inputs.length === 1) {
       const el = inputs[0];

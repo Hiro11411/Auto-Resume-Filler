@@ -4,7 +4,7 @@ import type { Adapter } from './types';
 // links are urls[LinkedIn] etc., custom questions are cards[...].
 export const lever: Adapter = {
   id: 'lever',
-  host: /^jobs\.lever\.co$/,
+  host: /^jobs\.(eu\.)?lever\.co$/,
   rules: [
     { type: 'fullName', hint: /^name$/ },
     { type: 'currentCompany', hint: /^org$/ },

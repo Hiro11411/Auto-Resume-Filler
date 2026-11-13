@@ -5,8 +5,21 @@ import { AI_ORIGIN } from '../../src/ext/hosts';
 import { extractResume } from '../../src/resume/extract';
 import { fromAi, mergeExtracted } from '../../src/resume/merge';
 import { fileToDataUrl, resumeToText } from '../../src/resume/parse';
-import { emptyJob, emptySchool, type Files, type Job, type Profile, type Settings } from '../../src/profile/schema';
-import { loadFiles, loadProfile, loadSettings, saveFiles, saveProfile, saveSettings } from '../../src/profile/storage';
+import { emptyJob, emptySchool, type Answers, type Files, type Job, type Profile, type ScoutSettings, type Settings } from '../../src/profile/schema';
+import {
+  loadAnswers,
+  loadFiles,
+  loadProfile,
+  loadSettings,
+  removeAnswer,
+  saveFiles,
+  saveProfile,
+  saveSettings,
+} from '../../src/profile/storage';
+import { SEASONS } from '../../src/scout/filter';
+import { SCOUT_PERMISSION } from '../../src/scout/run';
+import { SOURCES } from '../../src/scout/sources';
+import { clearFeed } from '../../src/scout/store';
 import { Switch } from '../../src/ui/Switch';
 import { Area, Choice, DECLINE, Section, SettingRow, setIn, Text, YES_NO, type Path } from './fields';
 import '../../src/ui/base.css';
@@ -19,13 +32,21 @@ function Options() {
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState('');
   const [importing, setImporting] = useState(false);
+  const [answers, setAnswers] = useState<Answers>({});
 
   useEffect(() => {
-    void Promise.all([loadProfile(), loadSettings(), loadFiles()]).then(([p, s, f]) => {
+    void Promise.all([loadProfile(), loadSettings(), loadFiles(), loadAnswers()]).then(([p, s, f, a]) => {
       setProfile(p);
       setSettings(s);
       setFiles(f);
+      setAnswers(a);
     });
+    // Answers are saved from job sites while this page may be open.
+    const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && changes.answers) setAnswers((changes.answers.newValue as Answers | undefined) ?? {});
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => chrome.storage.onChanged.removeListener(onChange);
   }, []);
 
   useEffect(() => {
@@ -116,6 +137,27 @@ function Options() {
     }
     await updateSettings({ ai: { ...settings.ai, enabled: on } });
   };
+
+  const updateScout = (patch: Partial<ScoutSettings>) => updateSettings({ scout: { ...settings.scout, ...patch } });
+
+  const toggleScout = async (on: boolean) => {
+    if (on) {
+      const ok = await chrome.permissions.request(SCOUT_PERMISSION);
+      if (!ok) return;
+      await updateScout({ enabled: true });
+      void chrome.runtime.sendMessage({ type: 'aaf:scoutCheck' });
+    } else {
+      await updateScout({ enabled: false });
+      await clearFeed();
+    }
+  };
+
+  const toggleSeason = (season: string, on: boolean) => {
+    const rest = settings.scout.seasons.filter((x) => x !== season);
+    void updateScout({ seasons: on ? [...rest, season] : rest });
+  };
+
+  const savedAnswers = Object.entries(answers).sort(([, a], [, b]) => b.at - a.at);
 
   const updateJob = (i: number, patch: Partial<Job>) => change(['work', i], { ...profile.work[i], ...patch });
 
@@ -317,7 +359,7 @@ function Options() {
           </SettingRow>
           <SettingRow
             title="Auto-fill on any site"
-            desc="Out of the box, auto-fill runs on Greenhouse, Lever, Ashby, Workday, iCIMS and SmartRecruiters. Turn this on to auto-fill company career sites too (Chrome will ask for access to all sites)."
+            desc="Out of the box, auto-fill runs on Greenhouse, Lever, Ashby, Workday, iCIMS, SmartRecruiters, Workable, Jobvite, BambooHR, Rippling, Oracle, SuccessFactors and Taleo. Turn this on to auto-fill company career sites too (Chrome will ask for access to all sites)."
           >
             <Switch label="Auto-fill on any site" checked={settings.anySite} onChange={(v) => void toggleAnySite(v)} />
           </SettingRow>
@@ -326,6 +368,12 @@ function Options() {
           </SettingRow>
           <SettingRow title="Also answer optional questions" desc="Off: optional screening and self-ID questions stay empty. Free-text questions always stay empty.">
             <Switch label="Also answer optional questions" checked={settings.fillOptional} onChange={(v) => void updateSettings({ fillOptional: v })} />
+          </SettingRow>
+          <SettingRow
+            title="Remember my answers"
+            desc="When you answer a custom question the rules don't know (“Are you open to hybrid work?”), reuse that answer the next time the same question appears. Shown as “check this”. Never used for consent, free-text or citizenship questions."
+          >
+            <Switch label="Remember my answers" checked={settings.rememberAnswers} onChange={(v) => void updateSettings({ rememberAnswers: v })} />
           </SettingRow>
           {settings.pausedSites.length > 0 && (
             <SettingRow title="Paused sites" desc={settings.pausedSites.join(', ')}>
@@ -363,6 +411,91 @@ function Options() {
         </div>
       </section>
 
+      <section>
+        <h2>Saved answers</h2>
+        <p class="muted desc">
+          {savedAnswers.length
+            ? 'Answers you gave to custom questions on earlier applications. Remove any you don’t want reused.'
+            : 'None yet. Answer a custom question on an application and it shows up here.'}
+        </p>
+        {savedAnswers.length > 0 && (
+          <>
+            <ul class="answers">
+              {savedAnswers.map(([key, a]) => (
+                <li>
+                  <div>
+                    <strong>{a.label || key.split('|')[1]}</strong>
+                    <span class="muted">{a.value.split('\n').join(', ')}</span>
+                  </div>
+                  <button class="link danger" onClick={() => void removeAnswer(key)}>
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button class="link danger" onClick={() => void removeAnswer(null)}>
+              Remove all
+            </button>
+          </>
+        )}
+      </section>
+
+      <section>
+        <h2>Internship alerts</h2>
+        <p class="muted desc">
+          Checks <a href={SOURCES[0].home} target="_blank" rel="noreferrer">{SOURCES[0].name}</a> every hour and notifies you when new
+          postings match these filters. The list is public; nothing about you is sent.{' '}
+          <a href={chrome.runtime.getURL('/scout.html')} target="_blank" rel="noreferrer">
+            Open the internship list
+          </a>
+        </p>
+        <div class="settings">
+          <SettingRow title="Check for new internships" desc="Chrome will ask for access to raw.githubusercontent.com, where the list is published.">
+            <Switch label="Check for new internships" checked={settings.scout.enabled} onChange={(v) => void toggleScout(v)} />
+          </SettingRow>
+          {settings.scout.enabled && (
+            <>
+              <SettingRow title="Desktop notifications" desc="Off: new listings only show as a count on the toolbar icon.">
+                <Switch label="Desktop notifications" checked={settings.scout.notify} onChange={(v) => void updateScout({ notify: v })} />
+              </SettingRow>
+              <div class="grid">
+                <div class="field wide">
+                  <label>Seasons (none ticked means all)</label>
+                  <div class="chips">
+                    {SEASONS.map((season) => (
+                      <label class="chip">
+                        <input
+                          type="checkbox"
+                          checked={settings.scout.seasons.includes(season)}
+                          onChange={(e) => toggleSeason(season, (e.currentTarget as HTMLInputElement).checked)}
+                        />{' '}
+                        {season}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <ScoutText label="Locations" hint="Comma-separated; any match. e.g. NY, Boston, Remote" value={settings.scout.locations} onSave={(v) => updateScout({ locations: v })} />
+                <ScoutText label="Title must include" hint="e.g. software, data, ML" value={settings.scout.include} onSave={(v) => updateScout({ include: v })} />
+                <ScoutText label="Hide titles with" hint="e.g. PhD, hardware" value={settings.scout.exclude} onSave={(v) => updateScout({ exclude: v })} />
+                <ScoutText label="Hide companies" hint="Exact names, comma-separated" value={settings.scout.hideCompanies} onSave={(v) => updateScout({ hideCompanies: v })} />
+                <div class="field">
+                  <label for="scout-sponsor">Listings without visa sponsorship</label>
+                  <select
+                    id="scout-sponsor"
+                    value={settings.scout.sponsorship}
+                    onChange={(e) => void updateScout({ sponsorship: (e.currentTarget as HTMLSelectElement).value as ScoutSettings['sponsorship'] })}
+                  >
+                    <option value="auto">Hide if I need sponsorship (from profile)</option>
+                    <option value="hide">Always hide</option>
+                    <option value="show">Always show</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
       <div class="savebar" role="region" aria-label="Save">
         <span class="muted" aria-live="polite">
           {status || (dirty ? 'Unsaved changes' : 'All changes saved')}
@@ -372,6 +505,18 @@ function Options() {
         </button>
       </div>
     </main>
+  );
+}
+
+/** A settings text box that saves when you leave it, not on every keystroke. */
+function ScoutText({ label, hint, value, onSave }: { label: string; hint: string; value: string; onSave(v: string): Promise<unknown> }) {
+  const id = `scout-${label.toLowerCase().replace(/\W+/g, '-')}`;
+  return (
+    <div class="field">
+      <label for={id}>{label}</label>
+      <input id={id} value={value} onChange={(e) => void onSave((e.currentTarget as HTMLInputElement).value.trim())} />
+      <small class="muted">{hint}</small>
+    </div>
   );
 }
 

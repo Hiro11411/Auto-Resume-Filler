@@ -129,10 +129,13 @@ export function classifyOne(f: Field, extraRules: Rule[] = []): Omit<Classified,
   return { ...f, type: best.type, confidence: best.confidence, datePart: datePart(f) };
 }
 
+const isClassified = (f: Field): f is Classified => 'type' in f && 'confidence' in f;
+
 export function classifyAll(fields: Field[], extraRules: Rule[] = []): Classified[] {
   const counts = new Map<string, number>();
   return fields.map((f) => {
-    const c = classifyOne(f, extraRules);
+    // Fields reused from an earlier pass keep their type; ordinals are always recounted.
+    const c = isClassified(f) ? f : classifyOne(f, extraRules);
     const repeating = WORK_TYPES.has(c.type) || EDU_TYPES.has(c.type);
     const key = `${c.type}:${c.datePart ?? ''}`;
     const ordinal = repeating ? (counts.get(key) ?? 0) : 0;

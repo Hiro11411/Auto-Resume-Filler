@@ -13,3 +13,4 @@ header h1 { font-size: 15px; margin: 0; flex: 1; }
 .notice { background: var(--surface); border-radius: var(--radius); padding: 10px 12px; }
 footer { display: flex; justify-content: space-between; font-size: 12px; }
 kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.scout { width: 100%; text-align: left; }

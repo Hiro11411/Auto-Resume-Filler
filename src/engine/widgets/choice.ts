@@ -46,6 +46,19 @@ export function fillRadioGroup(f: Classified, value: string): number {
   return m.score;
 }
 
+/** Tick each of several options in a checkbox group; the score is the weakest match. */
+export function fillCheckboxes(f: Classified, values: string[]): number {
+  const choices = f.choices ?? [];
+  const labels = choices.map((c) => c.label);
+  const picks = values.map((v) => bestOfValues(labels, v));
+  if (!picks.length || picks.some((m) => m.index < 0)) return 0;
+  for (const m of picks) {
+    const input = choices[m.index].el as HTMLInputElement;
+    if (!input.checked) input.click();
+  }
+  return Math.min(...picks.map((m) => m.score));
+}
+
 /** Single checkbox: value 'yes' means checked. */
 export function fillCheckbox(el: HTMLInputElement, value: string): number {
   const want = value === 'yes';

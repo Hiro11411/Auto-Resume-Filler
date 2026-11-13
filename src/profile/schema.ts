@@ -73,6 +73,25 @@ export interface Profile {
   };
 }
 
+export interface ScoutSettings {
+  /** Check the internship feed in the background and notify about new listings. */
+  enabled: boolean;
+  /** Show a desktop notification when new matching listings appear. */
+  notify: boolean;
+  /** Seasons to show ("Summer", "Fall"...); empty means all. */
+  seasons: string[];
+  /** Comma-separated location keywords ("NY, Remote"); empty means anywhere. */
+  locations: string;
+  /** Comma-separated title keywords; a listing must contain one. Empty means any title. */
+  include: string;
+  /** Comma-separated title keywords that hide a listing ("PhD, hardware"). */
+  exclude: string;
+  /** Comma-separated company names to hide. */
+  hideCompanies: string;
+  /** Hide listings that don't sponsor / need U.S. citizenship. 'auto' follows the profile's sponsorship answer. */
+  sponsorship: 'auto' | 'hide' | 'show';
+}
+
 export interface Settings {
   autoMode: boolean;
   pausedSites: string[];
@@ -81,6 +100,9 @@ export interface Settings {
   /** Also answer optional screening questions (salary, referral source, EEO...). */
   fillOptional: boolean;
   autoContinue: boolean;
+  /** Remember answers to custom questions and reuse them on later applications. */
+  rememberAnswers: boolean;
+  scout: ScoutSettings;
   ai: {
     enabled: boolean;
     apiKey: string;
@@ -95,10 +117,23 @@ export interface StoredFile {
   dataUrl: string;
 }
 
-export interface Files {
-  resume?: StoredFile;
-  coverLetter?: StoredFile;
+export type FileKind = 'resume' | 'coverLetter';
+
+export type Files = Partial<Record<FileKind, StoredFile>>;
+
+/** What content scripts get up front: names only. The bytes are fetched when a file field is filled. */
+export type FileMeta = Pick<StoredFile, 'name' | 'type'>;
+export type FilesMeta = Partial<Record<FileKind, FileMeta>>;
+
+/** An answer the user gave to a custom question, keyed by `answerKey()` (question + options). */
+export interface SavedAnswer {
+  /** The question as shown on the page, for the options page. */
+  label: string;
+  /** Option label for choice questions (several joined by newlines), or the typed text. */
+  value: string;
+  at: number;
 }
+export type Answers = Record<string, SavedAnswer>;
 
 export const emptyJob = (): Job => ({
   company: '',
@@ -163,6 +198,17 @@ export const defaultSettings = (): Settings => ({
   anySite: false,
   fillOptional: false,
   autoContinue: true,
+  rememberAnswers: true,
+  scout: {
+    enabled: false,
+    notify: true,
+    seasons: [],
+    locations: '',
+    include: '',
+    exclude: '',
+    hideCompanies: '',
+    sponsorship: 'auto',
+  },
   ai: {
     enabled: false,
     apiKey: '',
